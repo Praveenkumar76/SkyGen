@@ -1,0 +1,14 @@
+/* src/index.css */
+body { font-family: sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; }
+.container { max-width: 800px; margin: 2rem auto; padding: 1rem; text-align: center; }
+h1 { color: #bb86fc; }
+p { font-size: 0.9rem; color: #a0a0a0; }
+strong { color: #03dac6; }
+form { display: flex; gap: 10px; margin-top: 2rem; }
+input { flex-grow: 1; padding: 12px; font-size: 1rem; border-radius: 5px; border: 1px solid #333; background-color: #222; color: #fff; }
+button { padding: 12px 20px; font-size: 1rem; border-radius: 5px; border: none; background-color: #bb86fc; color: #000; cursor: pointer; }
+button:disabled { background-color: #555; cursor: not-allowed; }
+.response-area { margin-top: 2rem; padding: 1.5rem; background-color: #1e1e1e; border-radius: 8px; text-align: left; min-height: 100px; white-space: pre-wrap; word-wrap: break-word; }
+img { max-width: 100%; border-radius: 8px; margin-top: 1rem; }
+.loader { border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #bb86fc; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 2rem auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
