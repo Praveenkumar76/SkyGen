@@ -1,0 +1,45 @@
+.options-container {
+  position: relative;
+  margin-left: auto;
+}
+.options-button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.options-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.options-dropdown {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  background-color: #3a3a3c;
+  border: 1px solid #4a4a4c;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  z-index: 10;
+  width: 120px;
+  overflow: hidden;
+}
+.options-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: none;
+  color: #e5e5e7;
+  text-align: left;
+  cursor: pointer;
+}
+.options-dropdown button:hover {
+  background-color: #4a4a4c;
+}
+.options-dropdown button.delete {
+  color: #ff453a;
+}
