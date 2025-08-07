@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ConversationOptions from '../components/ConversationOptions';
 import UserAvatar from '../components/UserAvatar';
 import AgentActivity from '../components/AgentActivity'; // <-- NEW
-import { ReactComponent as Logo } from '../assets/logo.svg'; // <-- NEW: For placeholder
+import { ReactComponent as Logo } from '../assets/X.jpg'; // <-- NEW: For placeholder
 import './ChatPage.css'; // <-- NEW styles will be applied
 
 // Ensure you have this in your .env file
