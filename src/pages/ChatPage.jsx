@@ -277,7 +277,7 @@ export default function ChatPage({ session, profile }) {
                 <div className="chat-messages" ref={chatboxRef}>
                     {messages.length === 0 && !isLoading && (
                         <div className="empty-chat-placeholder">
-                            <img src="/X.jpg" alt="SkyGen Logo" className="placeholder-logo" />
+                            <img src="/X-removebg-preview.png" alt="SkyGen Logo" className="placeholder-logo" />
                             <h1>How can I help you today?</h1>
                         </div>
                     )}
