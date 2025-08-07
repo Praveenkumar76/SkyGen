@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import ConversationOptions from '../components/ConversationOptions';
 import UserAvatar from '../components/UserAvatar';
 import AgentActivity from '../components/AgentActivity'; // <-- NEW
-import { ReactComponent as Logo } from '../assets/X.jpg'; // <-- NEW: For placeholder
 import './ChatPage.css'; // <-- NEW styles will be applied
 
 // Ensure you have this in your .env file
@@ -192,7 +191,8 @@ export default function ChatPage({ session, profile }) {
                 <div className="chat-messages" ref={chatboxRef}>
                     {messages.length === 0 && !isLoading && (
                         <div className="empty-chat-placeholder">
-                            <Logo className="placeholder-logo" />
+                            {/* THIS IS THE CORRECTED LINE */}
+                            <img src="/X.jpg" alt="SkyGen Logo" className="placeholder-logo" />
                             <h1>How can I help you today?</h1>
                         </div>
                     )}
