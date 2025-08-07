@@ -208,6 +208,57 @@
   cursor: not-allowed;
   color: #737373;
 }
+.chat-message-wrapper {
+  position: relative;
+  /* Add a little space for the button to appear in */
+  margin: 0 2rem; 
+}
+
+/* Style the delete button */
+.delete-message-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #2e2e30; /* A subtle background */
+  border: 1px solid #4a4a4d;
+  color: #ededed;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  
+  /* Hide the button by default */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+}
+
+/* Show the button when hovering over its parent wrapper */
+.chat-message-wrapper:hover .delete-message-button {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Position button for assistant messages (on the right) */
+.chat-message-wrapper.assistant .delete-message-button {
+  right: -45px;
+}
+
+/* Position button for user messages (on the left) */
+.chat-message-wrapper.user .delete-message-button {
+  left: -45px;
+}
+
+/* A little extra touch for the button on hover */
+.delete-message-button:hover {
+  background-color: #d9534f; /* Reddish color for delete actions */
+  border-color: #d43f3a;
+}
+
 .footer-text {
   text-align: center;
   font-size: 0.75rem;
