@@ -8,14 +8,22 @@ import './ChatPage.css';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 export default function ChatPage({ session, profile }) {
+  // State variables
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [agentActivity, setAgentActivity] = useState(null); // New state for agent's thoughts
+  const [agentActivity, setAgentActivity] = useState(null);
   const chatboxRef = useRef(null);
   const navigate = useNavigate();
+
+  // --- CRITICAL FIX: Add a loading state if session or profile are not ready ---
+  if (!session || !profile) {
+    return <div>Loading user session...</div>;
+  }
+  
+  // Now we can safely destructure the user
   const { user } = session;
 
   // --- EFFECT 1: Fetch all conversations and listen for changes ---
@@ -45,13 +53,10 @@ export default function ChatPage({ session, profile }) {
       .subscribe();
       
     return () => supabase.removeChannel(conversationChannel);
-  }, [user.id, activeConversationId]); // Added activeConversationId to refetch if needed
+  }, [user.id]);
 
-
-  // --- EFFECT 2: Fetch messages for the ACTIVE conversation and listen for changes ---
-  // This hook is now cleaned up and consolidated.
+  // --- EFFECT 2: Fetch messages for the ACTIVE conversation ---
   useEffect(() => {
-    // No need to fetch if no conversation is selected
     if (!activeConversationId) {
       setMessages([]);
       return;
@@ -68,40 +73,22 @@ export default function ChatPage({ session, profile }) {
       else setMessages(data || []);
     };
     fetchMessages();
-
-    // Set up a unique channel for the active conversation
-    const messageChannel = supabase
-      .channel(`chat_messages:${activeConversationId}`)
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `conversation_id=eq.${activeConversationId}` },
-        (payload) => {
-          const newMessage = { id: payload.new.id, role: payload.new.role, content: payload.new.message };
-          setMessages((prev) => 
-             prev.find(msg => msg.id === newMessage.id) ? prev : [...prev, newMessage]
-          );
-        }
-      )
-      .subscribe();
-      
-    // Cleanup function to remove the channel when the component unmounts or the active chat changes
-    return () => {
-      supabase.removeChannel(messageChannel);
-    };
-  }, [activeConversationId]); // This effect ONLY runs when activeConversationId changes.
-
+    // Note: The realtime listener for messages was removed to simplify. 
+    // The UI will still feel real-time as new messages are added instantly from the handleSubmit function.
+    // Re-adding the message listener can sometimes cause duplicate messages depending on the setup.
+  }, [activeConversationId]);
 
   // --- EFFECT 3: Auto-scrolling ---
   useEffect(() => {
     if (chatboxRef.current) chatboxRef.current.scrollTop = chatboxRef.current.scrollHeight;
-  }, [messages, agentActivity]); // Also scroll on new agent activity
+  }, [messages, agentActivity]);
 
-
-  // --- Handler Functions (Unchanged) ---
+  // --- Handler Functions ---
   const handleNewChat = () => setActiveConversationId(null);
-  const handleRename = async (conversationId) => { /* ...your existing code... */ };
-  const handleDeleteConversation = async (conversationId) => { /* ...your existing code... */ };
-  const handleShare = async (conversationId) => { /* ...your existing code... */ };
-
+  const handleRename = async (conversationId) => { /* Your existing code */ };
+  const handleDeleteConversation = async (conversationId) => { /* Your existing code */ };
+  const handleShare = async (conversationId) => { /* Your existing code */ };
+  const handleDeleteMessage = async (messageId) => { /* Your existing code */ };
 
   // --- MAIN LOGIC: Handle Form Submission ---
   const handleSubmit = async (e) => {
@@ -115,35 +102,32 @@ export default function ChatPage({ session, profile }) {
     
     let currentConversationId = activeConversationId;
     
-    // --- New Conversation Logic (No more /generate-title) ---
+    // Create new conversation if none is active
     if (!currentConversationId) {
       try {
-        const tempTitle = tempInput.substring(0, 40); // Use the first part of the message as a temp title
+        const tempTitle = tempInput.substring(0, 40) + '...';
         const { data, error } = await supabase.from('conversations').insert({ user_id: user.id, title: tempTitle }).select('id').single();
         if (error) throw error;
         currentConversationId = data.id;
-        setActiveConversationId(currentConversationId); // This will trigger the useEffect to fetch history
+        setActiveConversationId(currentConversationId);
       } catch (err) {
         console.error("Error creating new conversation:", err);
-        setMessages(prev => prev.slice(0,-1)); // Remove the user's message if creation failed
+        setMessages(prev => prev.slice(0,-1));
         return;
       }
     }
 
-    // Save the user's message to the database
     await supabase.from('chat_messages').insert({ user_id: user.id, conversation_id: currentConversationId, role: 'user', message: tempInput });
     
     setIsLoading(true);
-    setAgentActivity("Thinking..."); // Set initial agent activity
+    setAgentActivity("Thinking...");
 
-    // --- NEW AGENT API CALL ---
     try {
       const messagesForApi = [...messages, userMessage].map(({ role, content }) => ({ role, content }));
       
       const response = await fetch(`${BACKEND_URL}/agent-chat`, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
-        // The new endpoint needs the user_id
         body: JSON.stringify({ messages: messagesForApi, user_id: user.id }) 
       });
 
@@ -152,14 +136,14 @@ export default function ChatPage({ session, profile }) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedContent = '';
-      setMessages(currentMessages => [...currentMessages, { id: crypto.randomUUID(), role: 'assistant', content: '' }]);
+      
+      // Add a placeholder for the assistant's response
+      const assistantMessageId = crypto.randomUUID();
+      setMessages(currentMessages => [...currentMessages, { id: assistantMessageId, role: 'assistant', content: '' }]);
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) {
-          setAgentActivity(null); // Clear activity when done
-          break;
-        }
+        if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
         const eventLines = chunk.split('\n\n').filter(line => line.length > 0);
@@ -169,39 +153,31 @@ export default function ChatPage({ session, profile }) {
             try {
               const data = JSON.parse(line.slice(6));
               
-              // --- New Logic to Handle Different Event Types ---
               if (data.type === 'thought' || data.type === 'tool_call' || data.type === 'tool_output') {
                 setAgentActivity(data.content || `Using tool: ${data.tool_name}`);
-              } else if (data.type === 'token') {
+              } else if (data.type === 'token' || data.type === 'final_answer') {
                 accumulatedContent += data.content;
-                setMessages(currentMessages => {
-                  const lastMessage = { ...currentMessages[currentMessages.length - 1], content: accumulatedContent };
-                  return [...currentMessages.slice(0, -1), lastMessage];
-                });
-              } else if (data.type === 'final_answer') {
-                  setMessages(currentMessages => {
-                    const lastMessage = { ...currentMessages[currentMessages.length - 1], content: data.content };
-                    return [...currentMessages.slice(0, -1), lastMessage];
-                  });
+                setMessages(currentMessages => currentMessages.map(msg => 
+                  msg.id === assistantMessageId ? { ...msg, content: accumulatedContent } : msg
+                ));
               } else if (data.type === 'agent_action' && data.action === 'sign_out') {
                 await supabase.auth.signOut();
                 navigate('/login');
-              } else if (data.done) {
-                 // The 'done' signal is the final indicator
               }
-            } catch (err) { console.error('Error parsing SSE message:', err, line); }
+            } catch (err) { console.error('Error parsing SSE message:', err); }
           }
         }
       }
-      // Save the final accumulated message to the database
+      
       if (accumulatedContent.trim()) {
-        await supabase.from('chat_messages').insert({ user_id: user.id, conversation_id: currentConversationId, role: 'assistant', message: accumulatedContent });
+        await supabase.from('chat_messages').update({ message: accumulatedContent }).eq('id', assistantMessageId);
+      } else {
+        await supabase.from('chat_messages').delete().eq('id', assistantMessageId);
       }
 
     } catch (error) {
       console.error('Streaming error:', error);
-      const errorMessage = { role: 'assistant', content: `Error: ${error.message}. Please try again.` };
-      setMessages(currentMessages => [...currentMessages.slice(0,-1), errorMessage]); // Replace loading state with error
+      setMessages(currentMessages => [...currentMessages, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
       setAgentActivity(null);
@@ -210,15 +186,47 @@ export default function ChatPage({ session, profile }) {
 
   return (
     <div className="chat-layout">
-      {/* Sidebar JSX is unchanged */}
       <div className="sidebar">
-       {/* ... your existing sidebar JSX code ... */}
+        <div className="sidebar-header">
+          <h2>Conversations</h2>
+          <button onClick={handleNewChat} className="new-chat-button">+ New Chat</button>
+        </div>
+        <div className="conversation-list">
+          {conversations.map(conv => (
+            <div key={conv.id} className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''}`}>
+              <span className="conversation-title" onClick={() => setActiveConversationId(conv.id)}>
+                {conv.title}
+              </span>
+              <ConversationOptions
+                onRename={() => handleRename(conv.id)}
+                onDelete={() => handleDeleteConversation(conv.id)}
+                onShare={() => handleShare(conv.id)}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="sidebar-footer">
+          <div className="user-profile-link" onClick={() => navigate('/profile')}>
+            <UserAvatar username={profile.username} />
+            <span>{profile.username}</span>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} className="logout-button">Sign Out</button>
+        </div>
       </div>
 
       <div className="chat-window-container">
         <div className="chat-box" ref={chatboxRef}>
-          {/* ... your existing message mapping code ... */}
-          {/* Add a display for the agent's activity */}
+          {messages.length === 0 && (
+            <div className="empty-chat-placeholder">
+              <h1>SkyGen</h1>
+              <p>Select a conversation or start a new one.</p>
+            </div>
+          )}
+          {messages.map((msg, index) => (
+            <div key={index} className={`chat-message ${msg.role}`}>
+              <div className="message-content" style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+            </div>
+          ))}
           {agentActivity && (
             <div className="chat-message assistant">
               <div className="message-content agent-activity">
@@ -226,6 +234,7 @@ export default function ChatPage({ session, profile }) {
               </div>
             </div>
           )}
+          {isLoading && !agentActivity && ( <div className="loading-indicator">Loading...</div> )}
         </div>
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask a question or give a command..." disabled={isLoading} />
