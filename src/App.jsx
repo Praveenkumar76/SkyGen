@@ -29,16 +29,23 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Effect 2: Handle Profile Data
+  // Effect 2: Handle Profile Data (This is the corrected part)
   useEffect(() => {
     if (session) {
       const fetchProfile = async () => {
-        const { data } = await supabase
+        // REMOVED .single() to prevent the 406 error
+        const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setProfile(data);
+          .eq('id', session.user.id);
+        
+        if (error) {
+          console.error("Error fetching profile:", error);
+        } else if (data && data.length > 0) {
+          setProfile(data[0]); // Set the profile if it exists
+        } else {
+          setProfile(null); // Explicitly set to null if no profile is found
+        }
       };
       fetchProfile();
     } else {
@@ -50,27 +57,22 @@ function App() {
     return <div className="loading-container">Loading...</div>;
   }
 
+  // --- Main routing logic ---
   return (
     <Routes>
-      {/* Publicly accessible route for shared chats */}
       <Route path="/share/:shareId" element={<SharedChatPage />} />
-
-      {/* --- Main routing logic --- */}
       <Route
         path="*"
         element={
           !session ? (
-            // User is logged out: show login/signup pages
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
               <Route path="*" element={<Navigate to="/login" />} />
             </Routes>
           ) : !profile ? (
-            // User is logged in but has no profile: force username creation
             <CreateUsernamePage session={session} />
           ) : (
-            // User is logged in and has a profile: show main app pages
             <Routes>
               <Route path="/" element={<ChatPage session={session} profile={profile} />} />
               <Route path="/profile" element={<ProfilePage session={session} />} />
