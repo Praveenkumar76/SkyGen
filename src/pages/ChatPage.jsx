@@ -6,7 +6,7 @@ import UserAvatar from '../components/UserAvatar';
 import AgentActivity from '../components/AgentActivity';
 import './ChatPage.css';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
 
 export default function ChatPage({ session, profile }) {
     const [conversations, setConversations] = useState([]);
