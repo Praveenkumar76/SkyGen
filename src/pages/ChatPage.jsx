@@ -115,11 +115,8 @@ export default function ChatPage({ session, profile }) {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             
-            // Re-fetch messages to replace temporary ones with real ones from DB
-            await fetchMessages(currentConversationId);
-            
-            let assistantResponse = { id: `asst_${Date.now()}`, role: 'assistant', content: '' };
-            setMessages(prev => [...prev, assistantResponse]);
+            let accumulatedResponse = "";
+            let finalDbMessage = { role: 'assistant', content: '' };
 
             while (true) {
                 const { value, done } = await reader.read();
@@ -131,7 +128,7 @@ export default function ChatPage({ session, profile }) {
                 for (const line of eventLines) {
                     const jsonData = JSON.parse(line.substring(6));
                     
-                    if (jsonData.done) break;
+                                            if (jsonData.done === true) break;
                     else if (jsonData.type === 'error') setAgentActivity({ type: 'error', content: jsonData.content });
                     else if (['thought', 'tool_call', 'tool_output'].includes(jsonData.type)) setAgentActivity(jsonData);
                     else if (jsonData.type === 'agent_action' && jsonData.action === 'sign_out') {
@@ -139,20 +136,30 @@ export default function ChatPage({ session, profile }) {
                         navigate('/login');
                     } else if (jsonData.type === 'token' || jsonData.type === 'final_answer') {
                         setAgentActivity(null); 
-                        assistantResponse.content += jsonData.content;
-                        setMessages(current => current.map(msg => msg.id === assistantResponse.id ? { ...msg, content: assistantResponse.content } : msg));
+                        accumulatedResponse += jsonData.content;
+                        // Display the streaming content in a temporary message
+                        setMessages(current => {
+                            const lastMsg = current[current.length - 1];
+                            if (lastMsg && lastMsg.isStreaming) {
+                                return current.map((msg, index) => index === current.length - 1 ? { ...msg, content: accumulatedResponse } : msg);
+                            }
+                            return [...current, { id: `asst_stream_${Date.now()}`, role: 'assistant', content: accumulatedResponse, isStreaming: true }];
+                        });
                     }
                 }
             }
             
-            // Remove the temporary streaming message
-            setMessages(current => current.filter(msg => msg.id !== assistantResponse.id));
-            if (assistantResponse.content.trim()) {
-                 await supabase.from('chat_messages').insert({ user_id: user.id, conversation_id: currentConversationId, role: 'assistant', message: assistantResponse.content });
+            finalDbMessage.content = accumulatedResponse;
+            if (finalDbMessage.content.trim()) {
+                await supabase.from('chat_messages').insert({ user_id: user.id, conversation_id: currentConversationId, role: 'assistant', message: finalDbMessage.content });
+                
+                // Clean up streaming message and replace with final message
+                setMessages(current => {
+                    return current.map(msg => 
+                        msg.isStreaming ? { ...msg, isStreaming: false, isTemp: false } : msg
+                    );
+                });
             }
-            
-            // Final fetch to get the very last message with its proper DB ID
-            await fetchMessages(currentConversationId);
 
         } catch (error) {
             console.error('Streaming error:', error);
