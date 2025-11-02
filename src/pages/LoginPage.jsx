@@ -172,13 +172,24 @@ export default function LoginPage() {
             setPassword('');
 
         } catch (err) {
+            // Enhanced error logging for debugging
             console.error('Registration error:', err);
+            console.error('Error message:', err.message);
+            console.error('Error status:', err.status || err.code);
+            console.error('Error details:', err.errors || err.details);
+            console.error('Full error object:', JSON.stringify(err, null, 2));
             
             // Handle specific Supabase errors - check both status and message
             const errorMessage = err.message || '';
             const errorStatus = err.status || err.code || '';
             
-            // Rate limit errors - don't retry, just inform user
+            // Get additional error details (Supabase sometimes nests errors)
+            const errorDetails = Array.isArray(err.errors) 
+                ? err.errors.map(e => e?.message || e).join(' ') 
+                : (err.errors || err.details || '');
+            const fullErrorText = `${errorMessage} ${errorDetails}`.toLowerCase();
+            
+            // Rate limit errors - don't retry, just inform user (check FIRST to prevent further retries)
             if (errorMessage.includes('rate limit') || errorMessage.includes('email rate limit exceeded') || errorStatus === 429) {
                 setError('Too many registration attempts. Please wait 10-15 minutes before trying again. You can try logging in if you already have an account.');
                 setRetryCount(0);
@@ -191,7 +202,51 @@ export default function LoginPage() {
                 return;
             }
             
+            // Check for database constraint violations FIRST (before retrying on "Error sending confirmation email")
+            // This includes duplicate username errors that might be wrapped in generic error messages
+            if (
+                errorMessage.includes('duplicate key value violates unique constraint') ||
+                errorMessage.includes('23505') ||
+                fullErrorText.includes('duplicate key') ||
+                fullErrorText.includes('23505') ||
+                fullErrorText.includes('profiles_username_key') ||
+                (errorStatus === 500 && (fullErrorText.includes('username') || fullErrorText.includes('unique constraint')))
+            ) {
+                // Check if it's specifically a username constraint
+                if (
+                    fullErrorText.includes('username') ||
+                    fullErrorText.includes('profiles_username_key') ||
+                    fullErrorText.includes('duplicate key')
+                ) {
+                    setError('This username is already taken. Please choose a different one.');
+                    setRetryCount(0); // No need to retry this
+                    return;
+                }
+            }
+            
+            // Check for email already registered errors
+            if (errorMessage.includes('User already registered') || errorMessage.includes('already registered') || errorStatus === 422) {
+                setError('An account with this email already exists. Please try logging in instead.');
+                // Auto-switch to login form
+                setTimeout(() => {
+                    setIsRegisterActive(false);
+                    setEmail(regEmail);
+                    setError('Please try logging in with your existing account.');
+                }, 2000);
+                return;
+            }
+            
+            // Handle "Error sending confirmation email" - but ONLY if it's not a database error
+            // For 500 errors, be more careful - don't retry if we suspect it's a database issue
             if (errorMessage.includes('Error sending confirmation email')) {
+                // If it's a 500 error, it might be a database issue, don't retry
+                if (errorStatus === 500) {
+                    setError('Registration failed due to a server error. This might be because the username is already taken or there was a database issue. Please try a different username or contact support.');
+                    setRetryCount(0);
+                    return;
+                }
+                
+                // For non-500 errors, retry as before
                 if (retryCount < 2) {
                     setError(`Registration attempt ${retryCount + 1} failed. Retrying...`);
                     setRetryCount(prev => prev + 1);
@@ -209,20 +264,17 @@ export default function LoginPage() {
                         setEmail(regEmail);
                     }, 2000);
                 }
-            } else if (errorMessage.includes('User already registered') || errorMessage.includes('already registered') || errorStatus === 422) {
-                setError('An account with this email already exists. Please try logging in instead.');
-                // Auto-switch to login form
-                setTimeout(() => {
-                    setIsRegisterActive(false);
-                    setEmail(regEmail);
-                    setError('Please try logging in with your existing account.');
-                }, 2000);
             } else if (errorMessage.includes('Invalid email')) {
                 setError('Please enter a valid email address.');
             } else if (errorMessage.includes('Password should be at least')) {
                 setError('Password must be at least 6 characters long.');
             } else {
-                setError(errorMessage || 'Failed to register. Please try again.');
+                // For 500 errors, provide a more helpful message
+                if (errorStatus === 500) {
+                    setError('Registration failed due to a server error. This might be because the username is already taken. Please try a different username.');
+                } else {
+                    setError(errorMessage || 'Failed to register. Please try again.');
+                }
             }
         } finally {
             setLoading(false);

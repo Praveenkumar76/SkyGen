@@ -1,9 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_CONFIG } from './config';
 
-// Try to use environment variables first, fallback to config.js
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_CONFIG.url;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_CONFIG.anonKey;
+// Use environment variables for Supabase configuration
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL:', supabaseUrl);

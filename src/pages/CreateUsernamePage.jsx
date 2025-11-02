@@ -20,16 +20,35 @@ export default function CreateUsernamePage({ session }) {
     setError(null);
     setLoading(true);
 
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({ id: session.user.id, username: username });
+    try {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({ id: session.user.id, username: username.trim() });
 
-    if (profileError) {
-      setError(profileError.message);
+      if (profileError) {
+        const errorMessage = profileError.message || '';
+        
+        // Check for duplicate username error
+        if (
+          (errorMessage.includes('duplicate key value violates unique constraint') || errorMessage.includes('23505')) &&
+          (errorMessage.includes('profiles_username_key') || errorMessage.includes('username'))
+        ) {
+          setError('This username is already taken. Please choose a different one.');
+        } else {
+          setError(errorMessage || 'Failed to create profile. Please try again.');
+        }
+        setLoading(false);
+        return; // Don't navigate on error
+      }
+      
+      // Only navigate on success
+      setLoading(false);
+      navigate('/');
+    } catch (err) {
+      console.error('Profile creation error:', err);
+      setError(err.message || 'Failed to create profile. Please try again.');
+      setLoading(false);
     }
-    setLoading(false);
-    // Navigate to the home page after creating profile
-    navigate('/');
   };
 
   return (
