@@ -120,10 +120,10 @@
   color: #737373;
 }
 .placeholder-logo {
-    width: 62px;
-    height: 62px;
-    margin-bottom: 1rem;
-    opacity: 0.5;
+    width: 120px;
+    height: 120px;
+    margin-bottom: 1.25rem;
+    opacity: 0.6;
 }
 .empty-chat-placeholder h1 {
   font-size: 2rem;
@@ -150,7 +150,94 @@
     border-radius: 1.25rem;
     line-height: 1.6;
     font-size: 1rem;
-    white-space: pre-wrap; /* Important for formatting like newlines */
+}
+
+/* Markdown content styling */
+.message-content p {
+    margin: 0.5rem 0;
+}
+
+.message-content p:first-child {
+    margin-top: 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content ul, .message-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.message-content code {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+    font-family: 'Courier New', monospace;
+}
+
+.message-content pre {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+
+.message-content pre code {
+    background-color: transparent;
+    padding: 0;
+}
+
+/* Markdown link styling with pills */
+.markdown-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.4);
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.chat-message-wrapper.user .markdown-link {
+    text-decoration-color: rgba(255, 255, 255, 0.6);
+}
+
+.markdown-link:hover {
+    text-decoration-color: rgba(255, 255, 255, 0.8);
+}
+
+.link-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    background-color: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-weight: 500;
+    margin-left: 0.25rem;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-message-wrapper.user .link-pill {
+    background-color: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.markdown-link:hover .link-pill {
+    background-color: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.chat-message-wrapper.user .markdown-link:hover .link-pill {
+    background-color: rgba(255, 255, 255, 0.35);
+    border-color: rgba(255, 255, 255, 0.45);
 }
 .chat-message-wrapper.user .message-content {
     background-color: #007aff;

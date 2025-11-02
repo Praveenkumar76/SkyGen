@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import VideoLoader from '../components/VideoLoader';
 import './ChatPage.css'; // Reuse chat styles
 
 export default function SharedChatPage() {
@@ -46,8 +47,8 @@ export default function SharedChatPage() {
     fetchSharedChat();
   }, [shareId]);
 
-  if (loading) return <div className="loading-container">Loading Conversation...</div>;
-  if (error) return <div className="loading-container">{error}</div>;
+  if (loading) return <VideoLoader size="large" message="Loading Conversation..." />;
+  if (error) return <VideoLoader size="large" message={error} />;
 
   return (
     <div className="chat-container">

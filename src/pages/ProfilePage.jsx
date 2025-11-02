@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import UserAvatar from '../components/UserAvatar';
+import VideoLoader from '../components/VideoLoader';
 import './ProfilePage.css';
 
 // A small component to render social media icons with animation
@@ -194,6 +195,7 @@ export default function ProfilePage({ session }) {
   };
 
   const handleSignOut = async () => {
+    localStorage.removeItem('lastActiveChat');
     await supabase.auth.signOut();
     navigate('/login');
   };
@@ -537,12 +539,7 @@ export default function ProfilePage({ session }) {
   };
 
   if (loading || !profile) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <div className="loading-text">Loading profile...</div>
-      </div>
-    );
+    return <VideoLoader size="large" message="Loading profile..." />;
   }
 
   return (

@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { useNavigate } from 'react-router-dom';
 import './Auth.css';
 
 export default function CreateUsernamePage({ session }) {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  // Prefill from user metadata if present
+  useEffect(() => {
+    const metaUsername = session?.user?.user_metadata?.username;
+    if (metaUsername) setUsername(metaUsername);
+  }, [session]);
 
   const handleCreateProfile = async (e) => {
     e.preventDefault();
@@ -20,7 +28,8 @@ export default function CreateUsernamePage({ session }) {
       setError(profileError.message);
     }
     setLoading(false);
-    // App.jsx will automatically detect the profile and switch views.
+    // Navigate to the home page after creating profile
+    navigate('/');
   };
 
   return (

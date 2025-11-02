@@ -1,16 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import ConversationOptions from '../components/ConversationOptions';
 import UserAvatar from '../components/UserAvatar';
 import AgentActivity from '../components/AgentActivity';
+import VideoLoader from '../components/VideoLoader';
 import './ChatPage.css';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+const BACKEND_URL = import.meta.env.BACKEND_URL || '/api';
+const ACTIVE_CONVERSATION_KEY = 'lastActiveChat';
+
+// Custom link component with icons and pills
+const CustomLink = ({ href, children }) => {
+    let domain = "Link";
+    let icon = "🔗";
+    
+    try {
+        const url = new URL(href);
+        domain = url.hostname.replace('www.', ''); // e.g., "stanford.edu"
+        
+        // Map specific domains to icons
+        if (domain.includes('stanford.edu')) icon = '🎓';
+        else if (domain.includes('livescience.com')) icon = '🔬';
+        else if (domain.includes('github.com')) icon = '💻';
+        else if (domain.includes('youtube.com') || domain.includes('youtu.be')) icon = '📺';
+        else if (domain.includes('wikipedia.org')) icon = '📚';
+        else if (domain.includes('twitter.com') || domain.includes('x.com')) icon = '🐦';
+        else if (domain.includes('linkedin.com')) icon = '💼';
+        else if (domain.includes('reddit.com')) icon = '🤖';
+        else if (domain.includes('stackoverflow.com')) icon = '❓';
+        else if (domain.includes('arxiv.org')) icon = '📄';
+        else if (domain.includes('medium.com')) icon = '📝';
+        else if (domain.includes('news') || domain.includes('bbc') || domain.includes('cnn') || domain.includes('reuters')) icon = '📰';
+        else if (domain.includes('docs') || domain.includes('documentation')) icon = '📖';
+        else if (domain.includes('research') || domain.includes('edu')) icon = '🎓';
+        else if (domain.includes('science') || domain.includes('nature.com') || domain.includes('science.org')) icon = '🔬';
+    } catch (e) {
+        // Invalid URL, keep default
+    }
+    
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="markdown-link">
+            {children}
+            <span className="link-pill">{icon} {domain}</span>
+        </a>
+    );
+};
 
 export default function ChatPage({ session, profile }) {
     const [conversations, setConversations] = useState([]);
-    const [activeConversationId, setActiveConversationId] = useState(null);
+    const [activeConversationId, setActiveConversationId] = useState(
+        () => localStorage.getItem(ACTIVE_CONVERSATION_KEY) || null
+    );
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -19,13 +62,13 @@ export default function ChatPage({ session, profile }) {
     const navigate = useNavigate();
 
     if (!session || !profile) {
-        return <div className="loading-screen">Loading user session...</div>;
+        return <VideoLoader size="large" message="Loading user session..." />;
     }
     
     const { user } = session;
     
-    // Extracted fetchMessages to be callable from multiple places
-    const fetchMessages = async (conversationId) => {
+    // Extracted fetchMessages to be callable from multiple places - memoized for performance
+    const fetchMessages = useCallback(async (conversationId) => {
         if (!conversationId) {
             setMessages([]);
             return;
@@ -37,13 +80,20 @@ export default function ChatPage({ session, profile }) {
             // FIX 1: Ensure the message 'id' from the database is saved into the state.
             setMessages(data.map(m => ({ id: m.id, role: m.role, content: m.message })) || []);
         }
-    };
+    }, []);
 
     useEffect(() => {
         const fetchConversations = async () => {
             const { data, error } = await supabase.from('conversations').select('id, title, share_id').eq('user_id', user.id).order('created_at', { ascending: false });
             if (error) console.error('Error fetching conversations:', error);
-            else setConversations(data || []);
+            else {
+                setConversations(data || []);
+                // Restore active conversation from localStorage after conversations are loaded
+                const savedConversationId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+                if (savedConversationId && data && data.some(conv => conv.id === savedConversationId)) {
+                    setActiveConversationId(savedConversationId);
+                }
+            }
         };
         fetchConversations();
 
@@ -51,6 +101,7 @@ export default function ChatPage({ session, profile }) {
             fetchConversations();
             if (payload.eventType === 'DELETE' && activeConversationId === payload.old.id) {
                 setActiveConversationId(null);
+                localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
             }
         }).subscribe();
         
@@ -59,13 +110,22 @@ export default function ChatPage({ session, profile }) {
 
     useEffect(() => {
         fetchMessages(activeConversationId);
-    }, [activeConversationId]);
+        // Save active conversation to localStorage whenever it changes
+        if (activeConversationId) {
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+        } else {
+            localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+        }
+    }, [activeConversationId, fetchMessages]);
 
     useEffect(() => {
         if (chatboxRef.current) chatboxRef.current.scrollTop = chatboxRef.current.scrollHeight;
     }, [messages, agentActivity]);
 
-    const handleNewChat = () => setActiveConversationId(null);
+    const handleNewChat = useCallback(() => {
+        setActiveConversationId(null);
+        localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -84,7 +144,7 @@ export default function ChatPage({ session, profile }) {
         let currentConversationId = activeConversationId;
         if (!currentConversationId) {
             try {
-                const tempTitle = userInput.substring(0, 40) + (userInput.length > 40 ? '...' : '');
+                const tempTitle = userInput.substring(0, 20) + (userInput.length > 20 ? '...' : '');
                 const { data, error } = await supabase.from('conversations').insert({ user_id: user.id, title: tempTitle }).select('id').single();
                 if (error) throw error;
                 currentConversationId = data.id;
@@ -132,6 +192,7 @@ export default function ChatPage({ session, profile }) {
                     else if (jsonData.type === 'error') setAgentActivity({ type: 'error', content: jsonData.content });
                     else if (['thought', 'tool_call', 'tool_output'].includes(jsonData.type)) setAgentActivity(jsonData);
                     else if (jsonData.type === 'agent_action' && jsonData.action === 'sign_out') {
+                        localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
                         await supabase.auth.signOut();
                         navigate('/login');
                     } else if (jsonData.type === 'token' || jsonData.type === 'final_answer') {
@@ -178,7 +239,10 @@ export default function ChatPage({ session, profile }) {
          try { 
              const { error } = await supabase.from('conversations').delete().eq('id', conversationId); 
              if (error) throw error; 
-             if (activeConversationId === conversationId) setActiveConversationId(null); 
+             if (activeConversationId === conversationId) {
+                setActiveConversationId(null);
+                localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+            } 
          } catch (error) { 
              console.error('Error deleting conversation:', error); 
              alert('Failed to delete the conversation. Please try again.'); 
@@ -229,7 +293,7 @@ export default function ChatPage({ session, profile }) {
          } 
     };
 
-    const handleDeleteMessage = async (messageId) => {
+    const handleDeleteMessage = useCallback(async (messageId) => {
         const isConfirmed = window.confirm("Are you sure you want to permanently delete this message?");
         if (!isConfirmed) return;
 
@@ -247,7 +311,21 @@ export default function ChatPage({ session, profile }) {
             console.error('Error deleting message:', error);
             alert('Could not delete the message.');
         }
-    };
+    }, []);
+
+    // Memoize conversation list to prevent unnecessary re-renders
+    const conversationList = useMemo(() => (
+        conversations.map(conv => ( 
+            <div key={conv.id} className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''}`} onClick={() => setActiveConversationId(conv.id)}> 
+                <span className="conversation-title">{conv.title}</span> 
+                <ConversationOptions 
+                    onDelete={() => handleDirectDelete(conv.id)} 
+                    onRename={() => handleRename(conv.id, conv.title)} 
+                    onShare={() => handleShare(conv.id)} 
+                /> 
+            </div> 
+        ))
+    ), [conversations, activeConversationId]);
     
     return (
         <div className="chat-layout">
@@ -260,18 +338,9 @@ export default function ChatPage({ session, profile }) {
                          New Chat 
                      </button> 
                  </div> 
-                 <div className="conversation-list"> 
-                     {conversations.map(conv => ( 
-                         <div key={conv.id} className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''}`} onClick={() => setActiveConversationId(conv.id)}> 
-                             <span className="conversation-title">{conv.title}</span> 
-                             <ConversationOptions 
-                                 onDelete={() => handleDirectDelete(conv.id)} 
-                                 onRename={() => handleRename(conv.id, conv.title)} 
-                                 onShare={() => handleShare(conv.id)} 
-                             /> 
-                         </div> 
-                     ))} 
-                 </div> 
+                 <div className="conversation-list"> 
+                     {conversationList}
+                 </div> 
                  <div className="sidebar-footer"> 
                      <div className="user-profile-link" onClick={() => navigate('/profile')}> 
                          <UserAvatar username={profile.username} /> 
@@ -284,7 +353,7 @@ export default function ChatPage({ session, profile }) {
                 <div className="chat-messages" ref={chatboxRef}>
                     {messages.length === 0 && !isLoading && (
                         <div className="empty-chat-placeholder">
-                            <img src="/X-removebg-preview.png" alt="SkyGen Logo" className="placeholder-logo" />
+                            <img src="/favicon-white.png" alt="SkyGen Logo" className="placeholder-logo" />
                             <h1>How can I help you today?</h1>
                         </div>
                     )}
@@ -292,7 +361,20 @@ export default function ChatPage({ session, profile }) {
                          // The key is now always unique
                          <div key={msg.id} className={`chat-message-wrapper ${msg.role}`}>
                             {msg.role === 'assistant' && <UserAvatar username="Skaira" />}
-                            <div className="message-content">{msg.content}</div>
+                            <div className="message-content">
+                                {msg.role === 'assistant' ? (
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            a: CustomLink
+                                        }}
+                                    >
+                                        {msg.content}
+                                    </ReactMarkdown>
+                                ) : (
+                                    msg.content
+                                )}
+                            </div>
                              {/* Only show delete button for messages that are not temporary */}
                             {!msg.isTemp && (
                                 <button className="delete-message-button" onClick={() => handleDeleteMessage(msg.id)}>
@@ -319,10 +401,10 @@ export default function ChatPage({ session, profile }) {
                          <input 
                              type="text" 
                              value={input} 
-                             onChange={(e) => setInput(e.target.value)} 
+                             onChange={(e) => setInput(e.target.value)} 
                              placeholder="Ask Skaira a question or give a command..." 
                              disabled={isLoading} 
-                         /> 
+                         /> 
                          <button type="submit" disabled={isLoading || !input.trim()}> 
                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg> 
                          </button> 
