@@ -9,7 +9,7 @@ import AgentActivity from '../components/AgentActivity';
 import VideoLoader from '../components/VideoLoader';
 import './ChatPage.css';
 
-const BACKEND_URL = import.meta.env.BACKEND_URL || '/api';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '/api';
 const ACTIVE_CONVERSATION_KEY = 'lastActiveChat';
 
 // Custom link component with icons and pills
