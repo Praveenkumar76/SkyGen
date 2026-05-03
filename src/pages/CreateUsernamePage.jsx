@@ -9,16 +9,26 @@ export default function CreateUsernamePage({ session }) {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  // Prefill from user metadata if present
   useEffect(() => {
-    const metaUsername = session?.user?.user_metadata?.username;
-    if (metaUsername) setUsername(metaUsername);
+    const metaUsername = session?.user?.user_metadata?.username ||
+                         session?.user?.user_metadata?.full_name?.replace(/\s+/g, '').toLowerCase();
+    if (metaUsername) {
+      console.log('[CreateUsername] Prefilling username from metadata:', metaUsername);
+      setUsername(metaUsername);
+    }
   }, [session]);
 
   const handleCreateProfile = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    console.log('[CreateUsername] Creating profile for user:', session.user.id, '| username:', username.trim());
+
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters long.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const { error: profileError } = await supabase
@@ -26,9 +36,8 @@ export default function CreateUsernamePage({ session }) {
         .insert({ id: session.user.id, username: username.trim() });
 
       if (profileError) {
+        console.error('[CreateUsername] Insert ERROR:', profileError.message, '| code:', profileError.code);
         const errorMessage = profileError.message || '';
-        
-        // Check for duplicate username error
         if (
           (errorMessage.includes('duplicate key value violates unique constraint') || errorMessage.includes('23505')) &&
           (errorMessage.includes('profiles_username_key') || errorMessage.includes('username'))
@@ -38,14 +47,14 @@ export default function CreateUsernamePage({ session }) {
           setError(errorMessage || 'Failed to create profile. Please try again.');
         }
         setLoading(false);
-        return; // Don't navigate on error
+        return;
       }
-      
-      // Only navigate on success
+
+      console.log('[CreateUsername] Profile created — navigating to /');
       setLoading(false);
       navigate('/');
     } catch (err) {
-      console.error('Profile creation error:', err);
+      console.error('[CreateUsername] Unexpected error:', err);
       setError(err.message || 'Failed to create profile. Please try again.');
       setLoading(false);
     }
@@ -54,17 +63,26 @@ export default function CreateUsernamePage({ session }) {
   return (
     <div className="auth-container">
       <div className="auth-form-box">
-        <h1>Almost there!</h1>
-        <p>Please choose a unique username to continue.</p>
+        <h1>One last step</h1>
+        <p>Choose a username for your SkyGen account.</p>
         <form onSubmit={handleCreateProfile}>
           <div className="form-group">
             <label htmlFor="username">Username</label>
-            <input id="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. skygen_user"
+              required
+              autoFocus
+              autoComplete="username"
+            />
           </div>
-          <button type="submit" className="auth-button" disabled={loading}>
-            {loading ? 'Saving...' : 'Create Profile'}
-          </button>
           {error && <p className="error-message">{error}</p>}
+          <button className="auth-button" type="submit" disabled={loading} style={{ marginTop: '16px' }}>
+            {loading ? 'Creating...' : 'Continue'}
+          </button>
         </form>
       </div>
     </div>

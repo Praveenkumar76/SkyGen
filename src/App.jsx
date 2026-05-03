@@ -21,57 +21,55 @@ function App() {
   const [profileLoading, setProfileLoading] = useState(true);
 
   // Effect 1: Handle Auth State
+  // We rely solely on onAuthStateChange (fires INITIAL_SESSION first, after processing
+  // the URL hash from OAuth redirects) instead of calling getSession() separately.
+  // This prevents a race where getSession() returns null before the OAuth hash is parsed,
+  // causing a flash redirect to /login that swallows the token.
   useEffect(() => {
     let isMounted = true;
-  
-    const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (isMounted) {
-        setSession(session);
-        setLoading(false);
-      }
-    };
-  
-    getInitialSession();
-  
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[App] Auth state change — event:', event, '| user:', session?.user?.email ?? 'none');
+      if (!isMounted) return;
       setSession(session);
-      // Clear active conversation from localStorage when user logs out
+      // Only mark loading done after the first event (INITIAL_SESSION or SIGNED_IN)
+      setLoading(false);
       if (!session) {
         localStorage.removeItem('lastActiveChat');
       }
     });
-  
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
   }, []);  
 
-  // Effect 2: Handle Profile Data (This is the corrected part)
+  // Effect 2: Handle Profile Data
   useEffect(() => {
     if (session) {
       const fetchProfile = async () => {
         setProfileLoading(true);
-        // REMOVED .single() to prevent the 406 error
+        console.log('[App] Fetching profile for user:', session.user.id);
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id);
         
         if (error) {
-          console.error("Error fetching profile:", error);
+          console.error('[App] Profile fetch ERROR:', error);
         } else if (data && data.length > 0) {
-          setProfile(data[0]); // Set the profile if it exists
+          console.log('[App] Profile loaded — username:', data[0].username);
+          setProfile(data[0]);
         } else {
-          setProfile(null); // Explicitly set to null if no profile is found
+          console.warn('[App] No profile found — redirecting to CreateUsernamePage');
+          setProfile(null);
         }
         setProfileLoading(false);
       };
       fetchProfile();
     } else {
       setProfile(null);
-      // Ensure loading state is cleared when there is no active session
       setProfileLoading(false);
     }
   }, [session]);

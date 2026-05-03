@@ -87,6 +87,7 @@ export default function LoginPage() {
         e.preventDefault();
         setError(null);
         setLoading(true);
+        console.log('[SignIn] Attempt started for:', email);
 
         if (!email || !password) {
             setError('Please enter both email and password');
@@ -94,7 +95,6 @@ export default function LoginPage() {
             return;
         }
 
-        // Validate email format
         if (!validateEmail(email)) {
             setError('Please enter a valid email address (e.g., user@example.com)');
             setLoading(false);
@@ -102,26 +102,27 @@ export default function LoginPage() {
         }
 
         try {
-            const { error: signInError } = await supabase.auth.signInWithPassword({
+            console.log('[SignIn] Calling supabase.auth.signInWithPassword...');
+            const { data, error: signInError } = await supabase.auth.signInWithPassword({
                 email,
                 password
             });
 
-            if (signInError) throw signInError;
-            
-            // Navigate to chat page after successful login
+            if (signInError) {
+                console.error('[SignIn] FAILED —', signInError.message, '| status:', signInError.status, '| code:', signInError.code);
+                throw signInError;
+            }
+
+            console.log('[SignIn] SUCCESS — user:', data.user?.id, '| email:', data.user?.email);
             navigate('/');
         } catch (err) {
-            console.error('Login error:', err);
-            
-            // Handle specific login errors - check both status and message
             const errorMessage = err.message || '';
             const errorStatus = err.status || err.code || '';
-            
-            if (errorMessage.includes('Invalid login credentials') || errorStatus === 400) {
+
+            if (errorMessage.includes('email_provider_disabled') || err.code === 'email_provider_disabled') {
+                setError('Email login is currently disabled. Please use "Continue with Google" or contact support.');
+            } else if (errorMessage.includes('Invalid login credentials') || errorStatus === 400) {
                 setError('Invalid email or password. Please check your credentials and try again.');
-            } else if (errorMessage.includes('Email not confirmed') || errorMessage.includes('email_not_confirmed')) {
-                setError('Please check your email and click the confirmation link before logging in.');
             } else if (errorMessage.includes('Too many requests') || errorStatus === 429) {
                 setError('Too many login attempts. Please wait a few minutes before trying again.');
             } else if (errorMessage.includes('User not found')) {
@@ -137,32 +138,37 @@ export default function LoginPage() {
     };
 
     const performRegistration = async () => {
+        console.log('[SignUp] Attempt started — email:', regEmail, '| username:', regUsername.trim());
         try {
+            console.log('[SignUp] Calling supabase.auth.signUp...');
             const { data, error: signUpError } = await supabase.auth.signUp({
                 email: regEmail,
                 password: regPassword,
                 options: {
-                    data: { // This data is passed to the database trigger
+                    data: {
                         username: regUsername.trim()
                     }
                 }
             });
 
-            if (signUpError) throw signUpError;
+            if (signUpError) {
+                console.error('[SignUp] FAILED —', signUpError.message, '| status:', signUpError.status, '| code:', signUpError.code);
+                throw signUpError;
+            }
 
-            // Reset retry count on successful registration
+            console.log('[SignUp] supabase.auth.signUp response — user:', data.user?.id, '| identities:', data.user?.identities?.length, '| session:', !!data.session);
+
             setRetryCount(0);
 
-            // Check if user needs email confirmation
             if (data.user && data.user.identities && data.user.identities.length === 0) {
-                // This case happens if email confirmation is required but the user already exists (but is unconfirmed)
-                setError('This user might already exist. Please check your email for a confirmation link or try logging in.');
+                console.warn('[SignUp] Zero identities — user likely already exists but unconfirmed');
+                setError('An account with this email already exists. Please try logging in instead.');
             } else if (data.user) {
-                // For immediate login or when confirmation is off, navigate. If confirmation is on, show message.
                 if (data.session) {
-                    // Navigate to chat page after successful registration
+                    console.log('[SignUp] SUCCESS with immediate session — navigating to /');
                     navigate('/');
                 } else {
+                    console.log('[SignUp] SUCCESS — email confirmation required (check Supabase settings if unexpected)');
                     setError('Registration successful! Please check your email for a confirmation link.');
                 }
             }
@@ -172,28 +178,28 @@ export default function LoginPage() {
             setPassword('');
 
         } catch (err) {
-            // Enhanced error logging for debugging
-            console.error('Registration error:', err);
-            console.error('Error message:', err.message);
-            console.error('Error status:', err.status || err.code);
-            console.error('Error details:', err.errors || err.details);
-            console.error('Full error object:', JSON.stringify(err, null, 2));
-            
-            // Handle specific Supabase errors - check both status and message
+            console.error('[SignUp] ERROR DETAILS:');
+            console.error('  message:', err.message);
+            console.error('  status:', err.status ?? err.code);
+            console.error('  full object:', JSON.stringify(err, null, 2));
+
             const errorMessage = err.message || '';
             const errorStatus = err.status || err.code || '';
-            
-            // Get additional error details (Supabase sometimes nests errors)
-            const errorDetails = Array.isArray(err.errors) 
-                ? err.errors.map(e => e?.message || e).join(' ') 
+            const errorDetails = Array.isArray(err.errors)
+                ? err.errors.map(e => e?.message || e).join(' ')
                 : (err.errors || err.details || '');
             const fullErrorText = `${errorMessage} ${errorDetails}`.toLowerCase();
-            
-            // Rate limit errors - don't retry, just inform user (check FIRST to prevent further retries)
+
+            if (errorMessage.includes('email_provider_disabled') || err.code === 'email_provider_disabled') {
+                console.warn('[SignUp] Email provider is disabled in Supabase — enable it in Authentication → Providers → Email');
+                setError('Email sign-up is currently disabled. Please use "Continue with Google" or contact support.');
+                return;
+            }
+
             if (errorMessage.includes('rate limit') || errorMessage.includes('email rate limit exceeded') || errorStatus === 429) {
-                setError('Too many registration attempts. Please wait 10-15 minutes before trying again. You can try logging in if you already have an account.');
+                console.warn('[SignUp] Rate limit hit — aborting retries');
+                setError('Too many registration attempts. Please wait 10-15 minutes before trying again.');
                 setRetryCount(0);
-                // Auto-switch to login form after showing error
                 setTimeout(() => {
                     setIsRegisterActive(false);
                     setEmail(regEmail);
@@ -201,33 +207,22 @@ export default function LoginPage() {
                 }, 3000);
                 return;
             }
-            
-            // Check for database constraint violations FIRST (before retrying on "Error sending confirmation email")
-            // This includes duplicate username errors that might be wrapped in generic error messages
+
             if (
-                errorMessage.includes('duplicate key value violates unique constraint') ||
-                errorMessage.includes('23505') ||
                 fullErrorText.includes('duplicate key') ||
                 fullErrorText.includes('23505') ||
                 fullErrorText.includes('profiles_username_key') ||
-                (errorStatus === 500 && (fullErrorText.includes('username') || fullErrorText.includes('unique constraint')))
+                (errorStatus === 500 && fullErrorText.includes('username'))
             ) {
-                // Check if it's specifically a username constraint
-                if (
-                    fullErrorText.includes('username') ||
-                    fullErrorText.includes('profiles_username_key') ||
-                    fullErrorText.includes('duplicate key')
-                ) {
-                    setError('This username is already taken. Please choose a different one.');
-                    setRetryCount(0); // No need to retry this
-                    return;
-                }
+                console.warn('[SignUp] Duplicate username constraint hit');
+                setError('This username is already taken. Please choose a different one.');
+                setRetryCount(0);
+                return;
             }
-            
-            // Check for email already registered errors
+
             if (errorMessage.includes('User already registered') || errorMessage.includes('already registered') || errorStatus === 422) {
+                console.warn('[SignUp] Email already registered');
                 setError('An account with this email already exists. Please try logging in instead.');
-                // Auto-switch to login form
                 setTimeout(() => {
                     setIsRegisterActive(false);
                     setEmail(regEmail);
@@ -235,46 +230,15 @@ export default function LoginPage() {
                 }, 2000);
                 return;
             }
-            
-            // Handle "Error sending confirmation email" - but ONLY if it's not a database error
-            // For 500 errors, be more careful - don't retry if we suspect it's a database issue
-            if (errorMessage.includes('Error sending confirmation email')) {
-                // If it's a 500 error, it might be a database issue, don't retry
-                if (errorStatus === 500) {
-                    setError('Registration failed due to a server error. This might be because the username is already taken or there was a database issue. Please try a different username or contact support.');
-                    setRetryCount(0);
-                    return;
-                }
-                
-                // For non-500 errors, retry as before
-                if (retryCount < 2) {
-                    setError(`Registration attempt ${retryCount + 1} failed. Retrying...`);
-                    setRetryCount(prev => prev + 1);
-                    // Retry after a longer delay to avoid rate limits
-                    setTimeout(() => {
-                        performRegistration();
-                    }, 2000);
-                    return;
-                } else {
-                    setError('Registration successful! However, there was an issue sending the confirmation email. Please try logging in directly or contact support.');
-                    setRetryCount(0);
-                    // Auto-switch to login form for user convenience
-                    setTimeout(() => {
-                        setIsRegisterActive(false);
-                        setEmail(regEmail);
-                    }, 2000);
-                }
-            } else if (errorMessage.includes('Invalid email')) {
+
+            if (errorMessage.includes('Invalid email')) {
                 setError('Please enter a valid email address.');
             } else if (errorMessage.includes('Password should be at least')) {
                 setError('Password must be at least 6 characters long.');
+            } else if (errorStatus === 500) {
+                setError('Registration failed due to a server error. The username may already be taken — please try a different one.');
             } else {
-                // For 500 errors, provide a more helpful message
-                if (errorStatus === 500) {
-                    setError('Registration failed due to a server error. This might be because the username is already taken. Please try a different username.');
-                } else {
-                    setError(errorMessage || 'Failed to register. Please try again.');
-                }
+                setError(errorMessage || 'Failed to register. Please try again.');
             }
         } finally {
             setLoading(false);
@@ -314,15 +278,18 @@ export default function LoginPage() {
     const handleGoogleSignIn = async () => {
         setError(null);
         setLoading(true);
+        const redirectTo = `${window.location.origin}/`;
+        console.log('[Google OAuth] Initiating sign-in — redirectTo:', redirectTo);
         try {
-            const { error } = await supabase.auth.signInWithOAuth({
+            const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { 
-                    // Redirect to chat page after Google authentication
-                    redirectTo: `${window.location.origin}/` 
-                }
+                options: { redirectTo }
             });
-            if (error) throw error;
+            if (error) {
+                console.error('[Google OAuth] FAILED —', error.message, '| status:', error.status);
+                throw error;
+            }
+            console.log('[Google OAuth] Redirecting to Google... provider URL:', data?.url);
         } catch (err) {
             setError(err.message || 'Sign in with Google failed');
             setLoading(false);
